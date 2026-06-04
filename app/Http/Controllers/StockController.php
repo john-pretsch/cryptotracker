@@ -13,19 +13,23 @@ class StockController extends Controller
 
     public function __construct(private YahooFinanceService $yahoo) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request, string $exchange = 'tsx'): Response
     {
-        $total    = $this->yahoo->getTsxSymbolCount();
-        $lastPage = (int) ceil($total / self::PER_PAGE);
+        $label    = $this->yahoo->getExchangeLabel($exchange);
+        $total    = $this->yahoo->getSymbolCount($exchange);
+        $lastPage = max(1, (int) ceil($total / self::PER_PAGE));
         $page     = max(1, min((int) $request->query('page', 1), $lastPage));
-        $stocks   = $this->yahoo->getQuotesPage($page, self::PER_PAGE);
+        $stocks   = $this->yahoo->getQuotesPage($exchange, $page, self::PER_PAGE);
 
         return Inertia::render('Stocks/Index', [
-            'stocks'      => $stocks,
-            'currentPage' => $page,
-            'lastPage'    => $lastPage,
-            'total'       => $total,
-            'perPage'     => self::PER_PAGE,
+            'stocks'           => $stocks,
+            'exchange'         => $exchange,
+            'exchangeShort'    => $label['short'],
+            'exchangeFull'     => $label['full'],
+            'currentPage'      => $page,
+            'lastPage'         => $lastPage,
+            'total'            => $total,
+            'perPage'          => self::PER_PAGE,
         ]);
     }
 }

@@ -10,13 +10,20 @@ class YahooFinanceService
 {
     private string $baseUrl = 'https://query1.finance.yahoo.com';
 
-    private const TMX_DIRECTORY_URL = 'https://www.tsx.com/json/company-directory/search/tsx/%5E*';
+    private const TMX_DIRECTORY_URL     = 'https://www.tsx.com/json/company-directory/search/tsx/%5E*';
+    private const NASDAQ_SCREENER_URL   = 'https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true&exchange=';
+
+    private const EXCHANGE_LABELS = [
+        'tsx'    => ['short' => 'TSX',    'full' => 'Toronto Stock Exchange'],
+        'nyse'   => ['short' => 'NYSE',   'full' => 'New York Stock Exchange'],
+        'nasdaq' => ['short' => 'NASDAQ', 'full' => 'NASDAQ'],
+    ];
 
     /** Fallback symbols used when the TMX directory is unreachable. */
     private const FALLBACK_SYMBOLS = [
-        'RY.TO', 'TD.TO', 'BNS.TO', 'BMO.TO', 'CNR.TO',
-        'ENB.TO', 'SU.TO', 'CP.TO', 'BCE.TO', 'TRP.TO',
-        'MFC.TO', 'SLF.TO', 'ATD.TO', 'T.TO', 'SHOP.TO',
+        'tsx'    => ['RY.TO', 'TD.TO', 'BNS.TO', 'BMO.TO', 'CNR.TO', 'ENB.TO', 'SU.TO', 'CP.TO', 'BCE.TO', 'TRP.TO'],
+        'nyse'   => ['JPM', 'BAC', 'XOM', 'JNJ', 'WMT', 'PG', 'CVX', 'HD', 'KO', 'DIS'],
+        'nasdaq' => ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'NFLX'],
     ];
 
     private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -81,8 +88,32 @@ class YahooFinanceService
     }
 
     // -------------------------------------------------------------------------
-    // TSX symbol discovery
+    // Symbol discovery
     // -------------------------------------------------------------------------
+
+    /**
+     * Return all Yahoo-Finance-compatible symbols for the given exchange.
+     * Results are cached for 24 hours; falls back to a hardcoded list on failure.
+     */
+    public function getAllSymbols(string $exchange): array
+    {
+        return match ($exchange) {
+            'tsx'    => $this->getAllTsxSymbols(),
+            'nyse'   => $this->getAllNasdaqScreenerSymbols('nyse'),
+            'nasdaq' => $this->getAllNasdaqScreenerSymbols('nasdaq'),
+            default  => [],
+        };
+    }
+
+    public function getSymbolCount(string $exchange): int
+    {
+        return count($this->getAllSymbols($exchange));
+    }
+
+    public function getExchangeLabel(string $exchange): array
+    {
+        return self::EXCHANGE_LABELS[$exchange] ?? ['short' => strtoupper($exchange), 'full' => strtoupper($exchange)];
+    }
 
     /**
      * Fetch and cache all Yahoo-Finance-compatible TSX symbols from the TMX directory.
@@ -97,46 +128,85 @@ class YahooFinanceService
                 ->get(self::TMX_DIRECTORY_URL);
 
             if (! $response->successful()) {
-                return self::FALLBACK_SYMBOLS;
+                return self::FALLBACK_SYMBOLS['tsx'];
             }
 
             $results = $response->json()['results'] ?? [];
-
             $symbols = [];
+
             foreach ($results as $listing) {
                 foreach ($listing['instruments'] ?? [] as $instrument) {
                     $sym = $instrument['symbol'] ?? '';
                     if ($sym === '') {
                         continue;
                     }
-                    // Skip USD-denominated variants, debentures, and warrants
                     if (str_ends_with($sym, '.U')
                         || str_contains($sym, '.DB')
                         || str_contains($sym, '.WT')
                         || str_contains($sym, '.WS')) {
                         continue;
                     }
-                    // Convert TMX dot-notation to Yahoo dash-notation and append exchange suffix
                     $symbols[] = str_replace('.', '-', $sym).'.TO';
                 }
             }
 
-            return empty($symbols) ? self::FALLBACK_SYMBOLS : array_values(array_unique($symbols));
+            return empty($symbols) ? self::FALLBACK_SYMBOLS['tsx'] : array_values(array_unique($symbols));
         });
     }
 
-    public function getTsxSymbolCount(): int
+    /**
+     * Fetch and cache all symbols for NYSE or NASDAQ via the Nasdaq screener API.
+     * No suffix needed — Yahoo Finance uses raw US tickers (e.g. AAPL, JPM).
+     */
+    private function getAllNasdaqScreenerSymbols(string $exchange): array
     {
-        return count($this->getAllTsxSymbols());
+        $cacheKey = "{$exchange}_all_symbols";
+
+        return Cache::remember($cacheKey, 86400, function () use ($exchange) {
+            $response = Http::timeout(20)
+                ->withHeaders(['User-Agent' => self::USER_AGENT])
+                ->get(self::NASDAQ_SCREENER_URL.strtoupper($exchange));
+
+            if (! $response->successful()) {
+                return self::FALLBACK_SYMBOLS[$exchange];
+            }
+
+            $rows    = $response->json()['data']['rows'] ?? [];
+            $symbols = array_filter(
+                array_column($rows, 'symbol'),
+                fn ($s) => $s !== null && $s !== '' && ! str_contains((string) $s, '/'),
+            );
+
+            return empty($symbols) ? self::FALLBACK_SYMBOLS[$exchange] : array_values(array_unique($symbols));
+        });
     }
 
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
+    private function quoteFields(): string
+    {
+        return implode(',', [
+            'shortName',
+            'symbol',
+            'regularMarketPrice',
+            'regularMarketChange',
+            'regularMarketChangePercent',
+            'regularMarketVolume',
+            'marketCap',
+            'regularMarketDayHigh',
+            'regularMarketDayLow',
+            'fiftyTwoWeekLow',
+            'fiftyTwoWeekHigh',
+            'currency',
+            'exchangeTimezoneName',
+            'marketState',
+        ]);
+    }
+
     /**
-     * Fetch live quotes for the given symbols, batching requests when needed.
-     * Defaults to all TSX symbols when none are provided.
+     * Fetch live quotes for the given symbols, batching in groups of 100.
      */
     public function getQuotes(array $symbols = []): array
     {
@@ -144,29 +214,9 @@ class YahooFinanceService
             $symbols = $this->getAllTsxSymbols();
         }
 
-        $fields = implode(',', [
-            'shortName',
-            'symbol',
-            'regularMarketPrice',
-            'regularMarketChange',
-            'regularMarketChangePercent',
-            'regularMarketVolume',
-            'marketCap',
-            'regularMarketDayHigh',
-            'regularMarketDayLow',
-            'fiftyTwoWeekLow',
-            'fiftyTwoWeekHigh',
-            'currency',
-            'exchangeTimezoneName',
-            'marketState',
-        ]);
-
         $results = [];
         foreach (array_chunk($symbols, 100) as $batch) {
-            $data = $this->get('/v7/finance/quote', [
-                'symbols' => implode(',', $batch),
-                'fields'  => $fields,
-            ]);
+            $data    = $this->get('/v7/finance/quote', ['symbols' => implode(',', $batch), 'fields' => $this->quoteFields()]);
             $results = array_merge($results, $data['quoteResponse']['result'] ?? []);
         }
 
@@ -174,55 +224,32 @@ class YahooFinanceService
     }
 
     /**
-     * Fetch live quotes for a single paginated page of TSX symbols.
+     * Fetch live quotes for one page of a given exchange's symbol list.
      */
-    public function getQuotesPage(int $page = 1, int $perPage = 50): array
+    public function getQuotesPage(string $exchange, int $page = 1, int $perPage = 50): array
     {
-        $allSymbols = $this->getAllTsxSymbols();
-        $offset     = ($page - 1) * $perPage;
-        $pageSyms   = array_slice($allSymbols, $offset, $perPage);
+        $allSymbols = $this->getAllSymbols($exchange);
+        $pageSyms   = array_slice($allSymbols, ($page - 1) * $perPage, $perPage);
 
         if (empty($pageSyms)) {
             return [];
         }
 
-        $fields = implode(',', [
-            'shortName',
-            'symbol',
-            'regularMarketPrice',
-            'regularMarketChange',
-            'regularMarketChangePercent',
-            'regularMarketVolume',
-            'marketCap',
-            'regularMarketDayHigh',
-            'regularMarketDayLow',
-            'fiftyTwoWeekLow',
-            'fiftyTwoWeekHigh',
-            'currency',
-            'exchangeTimezoneName',
-            'marketState',
-        ]);
-
-        $data = $this->get('/v7/finance/quote', [
-            'symbols' => implode(',', $pageSyms),
-            'fields'  => $fields,
-        ]);
+        $data = $this->get('/v7/finance/quote', ['symbols' => implode(',', $pageSyms), 'fields' => $this->quoteFields()]);
 
         return $data['quoteResponse']['result'] ?? [];
     }
 
     public function getTopTsxStocks(int $limit = 10): array
     {
-        return array_slice($this->getQuotesPage(1, $limit), 0, $limit);
+        return array_slice($this->getQuotesPage('tsx', 1, $limit), 0, $limit);
     }
 
     /**
-     * Search all TSX-listed securities by name or ticker symbol.
-     * Returns results enriched with live quote data.
+     * Search securities on the given exchange by name or ticker symbol.
      */
-    public function searchTsx(string $query): array
+    public function searchExchange(string $exchange, string $query): array
     {
-        // Step 1: search for matching instruments
         $creds     = $this->getCredentials();
         $cookieJar = CookieJar::fromArray($creds['cookies'], '.yahoo.com');
 
@@ -230,31 +257,35 @@ class YahooFinanceService
             ->timeout(10)
             ->withHeaders(['User-Agent' => self::USER_AGENT])
             ->get($this->baseUrl.'/v1/finance/search', [
-                'q'            => $query,
-                'quotesCount'  => 20,
-                'newsCount'    => 0,
-                'listsCount'   => 0,
-                'crumb'        => $creds['crumb'],
+                'q'           => $query,
+                'quotesCount' => 20,
+                'newsCount'   => 0,
+                'listsCount'  => 0,
+                'crumb'       => $creds['crumb'],
             ]);
 
         if (! $searchResp->successful()) {
             return [];
         }
 
-        $quotes = $searchResp->json()['quotes'] ?? [];
+        $quotes  = $searchResp->json()['quotes'] ?? [];
+        $symbols = array_column($quotes, 'symbol');
 
-        // Filter to TSX-listed equities only (.TO suffix)
-        $tsxSymbols = array_values(array_filter(
-            array_column($quotes, 'symbol'),
-            fn ($sym) => str_ends_with((string) $sym, '.TO'),
-        ));
+        // Filter to the target exchange
+        $filtered = match ($exchange) {
+            'tsx'    => array_values(array_filter($symbols, fn ($s) => str_ends_with((string) $s, '.TO'))),
+            'nyse'   => array_values(array_filter($symbols, fn ($s) => ! str_contains((string) $s, '.') && ! str_contains((string) $s, '-'))),
+            'nasdaq' => array_values(array_filter($symbols, fn ($s) => ! str_contains((string) $s, '.') && ! str_contains((string) $s, '-'))),
+            default  => $symbols,
+        };
 
-        if (empty($tsxSymbols)) {
-            return [];
-        }
+        return empty($filtered) ? [] : $this->getQuotes($filtered);
+    }
 
-        // Step 2: fetch live quotes for matched symbols
-        return $this->getQuotes($tsxSymbols);
+    /** @deprecated Use searchExchange() */
+    public function searchTsx(string $query): array
+    {
+        return $this->searchExchange('tsx', $query);
     }
 
     public function getTsxSymbols(): array

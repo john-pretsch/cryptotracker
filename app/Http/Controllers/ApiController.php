@@ -43,12 +43,15 @@ class ApiController extends Controller
 
     public function stockSearch(Request $request): JsonResponse
     {
-        $query = $request->get('q', '');
+        $query    = $request->get('q', '');
+        $exchange = in_array($request->get('exchange'), ['tsx', 'nyse', 'nasdaq'], true)
+            ? $request->get('exchange')
+            : 'tsx';
 
         if (strlen($query) < 1) {
             return response()->json([]);
         }
 
-        return response()->json($this->yahoo->searchTsx($query));
+        return response()->json($this->yahoo->searchExchange($exchange, $query));
     }
 }

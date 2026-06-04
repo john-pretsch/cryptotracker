@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
-import { Menu, Search, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, Menu, Search, TrendingUp, X } from 'lucide-react';
 
 export default function Navbar() {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [showResults, setShowResults] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [stocksOpen, setStocksOpen] = useState(false);
     const searchRef = useRef(null);
+    const stocksRef = useRef(null);
 
     useEffect(() => {
         if (query.length < 2) {
@@ -34,6 +36,9 @@ export default function Navbar() {
         function handleClick(event) {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
                 setShowResults(false);
+            }
+            if (stocksRef.current && !stocksRef.current.contains(event.target)) {
+                setStocksOpen(false);
             }
         }
 
@@ -63,7 +68,22 @@ export default function Navbar() {
                     <div className="hidden md:flex items-center gap-6">
                         <Link href="/" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Home</Link>
                         <Link href="/coins" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Cryptocurrencies</Link>
-                        <Link href="/stocks" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">TSX Stocks</Link>
+                        <div ref={stocksRef} className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setStocksOpen((v) => !v)}
+                                className="flex items-center gap-1 text-gray-300 hover:text-white text-sm font-medium transition-colors"
+                            >
+                                Stocks <ChevronDown className={`w-3.5 h-3.5 transition-transform ${stocksOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {stocksOpen && (
+                                <div className="absolute top-full mt-2 left-0 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+                                    <Link href="/stocks/tsx"    onClick={() => setStocksOpen(false)} className="block px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">TSX</Link>
+                                    <Link href="/stocks/nyse"   onClick={() => setStocksOpen(false)} className="block px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">NYSE</Link>
+                                    <Link href="/stocks/nasdaq" onClick={() => setStocksOpen(false)} className="block px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">NASDAQ</Link>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div ref={searchRef} className="relative w-72 hidden md:block">
@@ -123,7 +143,22 @@ export default function Navbar() {
                     <div className="md:hidden pb-4 space-y-2">
                         <Link href="/" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Home</Link>
                         <Link href="/coins" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Cryptocurrencies</Link>
-                        <Link href="/stocks" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>TSX Stocks</Link>
+                        <div>
+                            <button
+                                type="button"
+                                onClick={() => setStocksOpen((v) => !v)}
+                                className="flex items-center gap-1 w-full px-2 py-2 text-gray-300 hover:text-white text-left"
+                            >
+                                Stocks <ChevronDown className={`w-3.5 h-3.5 transition-transform ${stocksOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {stocksOpen && (
+                                <div className="pl-4 space-y-0.5">
+                                    <Link href="/stocks/tsx"    onClick={() => { setMenuOpen(false); setStocksOpen(false); }} className="block px-2 py-1.5 text-sm text-gray-400 hover:text-white">TSX</Link>
+                                    <Link href="/stocks/nyse"   onClick={() => { setMenuOpen(false); setStocksOpen(false); }} className="block px-2 py-1.5 text-sm text-gray-400 hover:text-white">NYSE</Link>
+                                    <Link href="/stocks/nasdaq" onClick={() => { setMenuOpen(false); setStocksOpen(false); }} className="block px-2 py-1.5 text-sm text-gray-400 hover:text-white">NASDAQ</Link>
+                                </div>
+                            )}
+                        </div>
                         <div className="relative mt-2" ref={searchRef}>
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input

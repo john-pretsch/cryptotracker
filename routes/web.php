@@ -9,7 +9,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/coins', [CoinController::class, 'index'])->name('coins.index');
 Route::get('/coins/{id}', [CoinController::class, 'show'])->name('coins.show');
-Route::get('/stocks', [StockController::class, 'index'])->name('stocks.index');
+Route::redirect('/stocks', '/stocks/tsx')->name('stocks');
+Route::get('/stocks/{exchange}', [StockController::class, 'index'])
+    ->where('exchange', 'tsx|nyse|nasdaq')
+    ->name('stocks.index');
 
 Route::prefix('_api')->group(function () {
     Route::get('/search', [ApiController::class, 'search']);
