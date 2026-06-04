@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, router } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { ChevronDown, Menu, Search, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, LogIn, LogOut, Menu, Search, TrendingUp, User, X } from 'lucide-react';
 
 export default function Navbar() {
+    const { auth } = usePage().props;
+    const user = auth?.user;
+
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [showResults, setShowResults] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [stocksOpen, setStocksOpen] = useState(false);
+    const [userOpen, setUserOpen] = useState(false);
     const searchRef = useRef(null);
     const stocksRef = useRef(null);
+    const userRef = useRef(null);
 
     useEffect(() => {
         if (query.length < 2) {
@@ -39,6 +44,9 @@ export default function Navbar() {
             }
             if (stocksRef.current && !stocksRef.current.contains(event.target)) {
                 setStocksOpen(false);
+            }
+            if (userRef.current && !userRef.current.contains(event.target)) {
+                setUserOpen(false);
             }
         }
 
@@ -130,6 +138,44 @@ export default function Navbar() {
                         )}
                     </div>
 
+                    {/* Desktop auth */}
+                    <div ref={userRef} className="hidden md:flex items-center gap-2">
+                        {user ? (
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => setUserOpen((v) => !v)}
+                                    className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+                                >
+                                    <User className="w-4 h-4" />
+                                    <span>{user.name}</span>
+                                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${userOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {userOpen && (
+                                    <div className="absolute right-0 top-full mt-2 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
+                                        <Link href="/profile" onClick={() => setUserOpen(false)} className="block px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">Profile</Link>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setUserOpen(false); router.post('/logout'); }}
+                                            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
+                                        >
+                                            <LogOut className="w-3.5 h-3.5" /> Log out
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <Link href="/login" className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors">
+                                    <LogIn className="w-4 h-4" /> Log in
+                                </Link>
+                                <Link href="/register" className="ml-2 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-sm font-medium text-white transition-colors">
+                                    Register
+                                </Link>
+                            </>
+                        )}
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => setMenuOpen((value) => !value)}
@@ -159,6 +205,19 @@ export default function Navbar() {
                                 </div>
                             )}
                         </div>
+                        {user ? (
+                            <>
+                                <Link href="/profile" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Profile</Link>
+                                <button type="button" onClick={() => { setMenuOpen(false); router.post('/logout'); }} className="flex items-center gap-2 px-2 py-2 text-gray-300 hover:text-white w-full text-left">
+                                    <LogOut className="w-4 h-4" /> Log out
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <Link href="/login"    className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Log in</Link>
+                                <Link href="/register" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Register</Link>
+                            </>
+                        )}
                         <div className="relative mt-2" ref={searchRef}>
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
