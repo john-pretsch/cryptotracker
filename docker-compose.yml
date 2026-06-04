@@ -1,0 +1,119 @@
+services:
+
+  # ── Workspace ──────────────────────────────────────────────────────────────
+  # Interactive PHP + Node container for running artisan, composer, npm, etc.
+  workspace:
+    build:
+      context: .
+      dockerfile: docker/workspace/Dockerfile
+    container_name: cryptotracker_workspace
+    volumes:
+      - .:/var/www/html
+    working_dir: /var/www/html
+    tty: true
+    stdin_open: true
+    networks:
+      - cryptotracker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      #redis:
+      #  condition: service_started
+
+  # ── PHP-FPM ─────────────────────────────────────────────────────────────────
+  phpfpm:
+    build:
+      context: .
+      dockerfile: docker/phpfpm/Dockerfile
+    container_name: cryptotracker_phpfpm
+    volumes:
+      - .:/var/www/html
+    networks:
+      - cryptotracker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      #redis:
+      #  condition: service_started
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+
+  # ── Nginx ───────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cryptotracker_nginx
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - cryptotracker
+    depends_on:
+      - phpfpm
+
+  # ── MySQL ───────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: cryptotracker_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-rootpassword}"
+      MYSQL_DATABASE: "${DB_DATABASE:-cryptotracker}"
+      MYSQL_USER: "${DB_USERNAME:-laravel}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:-laravel}"
+    ports:
+      - "${DB_PORT_FORWARD:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - cryptotracker
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── phpMyAdmin ──────────────────────────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: cryptotracker_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "${PMA_PORT:-8080}:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-rootpassword}"
+      UPLOAD_LIMIT: 64M
+    networks:
+      - cryptotracker
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  #redis:
+  #  image: redis:7-alpine
+  #  container_name: cryptotracker_redis
+  #  restart: unless-stopped
+  #  ports:
+  #    - "${REDIS_PORT_FORWARD:-6379}:6379"
+  #  volumes:
+  #    - redis_data:/data
+  #  networks:
+  #    - cryptotracker
+  #  command: redis-server --appendonly yes
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  cryptotracker:
+    driver: bridge
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
