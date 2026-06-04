@@ -1,11 +1,11 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import axios from 'axios';
-import { BarChart2, Search, X } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Layout from '../../Components/Layout';
 import StockTable from '../../Components/StockTable';
 
-export default function StocksIndex({ stocks }) {
+export default function StocksIndex({ stocks, currentPage, lastPage, total }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState(null); // null = show defaults
     const [loading, setLoading] = useState(false);
@@ -56,12 +56,12 @@ export default function StocksIndex({ stocks }) {
                     <div className="flex items-center gap-3 mb-3">
                         <BarChart2 className="w-7 h-7 text-blue-400" />
                         <h1 className="text-3xl md:text-4xl font-bold text-white">
-                            TSX Stocks
+                            TSX Securities
                             <span className="text-blue-400"> — Toronto Stock Exchange</span>
                         </h1>
                     </div>
                     <p className="text-gray-400 mb-6">
-                        Search any company listed on the TSX by name or ticker symbol. Prices in CAD.
+                        All {total.toLocaleString()} securities listed on the TSX. Search by name or ticker, or browse by page. Prices in CAD.
                     </p>
 
                     {/* Search bar */}
@@ -95,7 +95,9 @@ export default function StocksIndex({ stocks }) {
                         {!loading && isSearching && !error && results !== null && (
                             <>{results.length} result{results.length !== 1 ? 's' : ''} for &ldquo;{query}&rdquo;</>
                         )}
-                        {!loading && !isSearching && 'Top TSX Stocks'}
+                        {!loading && !isSearching && (
+                            <>Page {currentPage} of {lastPage} &mdash; {total.toLocaleString()} securities</>
+                        )}
                         {!loading && error && ''}
                     </h2>
                 </div>
@@ -106,8 +108,51 @@ export default function StocksIndex({ stocks }) {
                     <StockTable stocks={displayed} loading={loading} />
                 )}
 
+                {/* Pagination — only shown when not searching */}
+                {!isSearching && lastPage > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-6">
+                        <button
+                            onClick={() => router.get('/stocks', { page: currentPage - 1 })}
+                            disabled={currentPage <= 1}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded bg-gray-800 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+                        >
+                            <ChevronLeft className="w-4 h-4" /> Prev
+                        </button>
+
+                        {/* Page number pills */}
+                        {Array.from({ length: Math.min(7, lastPage) }, (_, i) => {
+                            // Show pages around current
+                            const half = 3;
+                            let start = Math.max(1, currentPage - half);
+                            const end = Math.min(lastPage, start + 6);
+                            start = Math.max(1, end - 6);
+                            return start + i;
+                        }).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => router.get('/stocks', { page: p })}
+                                className={`w-8 h-8 rounded text-sm transition-colors ${
+                                    p === currentPage
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                }`}
+                            >
+                                {p}
+                            </button>
+                        ))}
+
+                        <button
+                            onClick={() => router.get('/stocks', { page: currentPage + 1 })}
+                            disabled={currentPage >= lastPage}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded bg-gray-800 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+                        >
+                            Next <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
                 <p className="text-xs text-gray-600 mt-4 text-right">
-                    Data sourced from Yahoo Finance · Quotes cached 5 min
+                    Listings sourced from TMX · Quotes from Yahoo Finance · Cached 5 min
                 </p>
             </div>
         </Layout>

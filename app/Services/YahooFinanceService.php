@@ -10,7 +10,10 @@ class YahooFinanceService
 {
     private string $baseUrl = 'https://query1.finance.yahoo.com';
 
-    private const TSX_SYMBOLS = [
+    private const TMX_DIRECTORY_URL = 'https://www.tsx.com/json/company-directory/search/tsx/%5E*';
+
+    /** Fallback symbols used when the TMX directory is unreachable. */
+    private const FALLBACK_SYMBOLS = [
         'RY.TO', 'TD.TO', 'BNS.TO', 'BMO.TO', 'CNR.TO',
         'ENB.TO', 'SU.TO', 'CP.TO', 'BCE.TO', 'TRP.TO',
         'MFC.TO', 'SLF.TO', 'ATD.TO', 'T.TO', 'SHOP.TO',
@@ -78,36 +81,131 @@ class YahooFinanceService
     }
 
     // -------------------------------------------------------------------------
+    // TSX symbol discovery
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetch and cache all Yahoo-Finance-compatible TSX symbols from the TMX directory.
+     * Flattens per-listing instruments, removes USD variants, debentures, and warrants,
+     * then converts TMX dot-notation (e.g. AKT.A) to Yahoo dash-notation (AKT-A.TO).
+     */
+    public function getAllTsxSymbols(): array
+    {
+        return Cache::remember('tsx_all_symbols', 86400, function () {
+            $response = Http::timeout(15)
+                ->withHeaders(['User-Agent' => self::USER_AGENT])
+                ->get(self::TMX_DIRECTORY_URL);
+
+            if (! $response->successful()) {
+                return self::FALLBACK_SYMBOLS;
+            }
+
+            $results = $response->json()['results'] ?? [];
+
+            $symbols = [];
+            foreach ($results as $listing) {
+                foreach ($listing['instruments'] ?? [] as $instrument) {
+                    $sym = $instrument['symbol'] ?? '';
+                    if ($sym === '') {
+                        continue;
+                    }
+                    // Skip USD-denominated variants, debentures, and warrants
+                    if (str_ends_with($sym, '.U')
+                        || str_contains($sym, '.DB')
+                        || str_contains($sym, '.WT')
+                        || str_contains($sym, '.WS')) {
+                        continue;
+                    }
+                    // Convert TMX dot-notation to Yahoo dash-notation and append exchange suffix
+                    $symbols[] = str_replace('.', '-', $sym).'.TO';
+                }
+            }
+
+            return empty($symbols) ? self::FALLBACK_SYMBOLS : array_values(array_unique($symbols));
+        });
+    }
+
+    public function getTsxSymbolCount(): int
+    {
+        return count($this->getAllTsxSymbols());
+    }
+
+    // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
 
     /**
-     * Fetch live quotes for one or more symbols.
+     * Fetch live quotes for the given symbols, batching requests when needed.
+     * Defaults to all TSX symbols when none are provided.
      */
     public function getQuotes(array $symbols = []): array
     {
         if (empty($symbols)) {
-            $symbols = self::TSX_SYMBOLS;
+            $symbols = $this->getAllTsxSymbols();
         }
 
+        $fields = implode(',', [
+            'shortName',
+            'symbol',
+            'regularMarketPrice',
+            'regularMarketChange',
+            'regularMarketChangePercent',
+            'regularMarketVolume',
+            'marketCap',
+            'regularMarketDayHigh',
+            'regularMarketDayLow',
+            'fiftyTwoWeekLow',
+            'fiftyTwoWeekHigh',
+            'currency',
+            'exchangeTimezoneName',
+            'marketState',
+        ]);
+
+        $results = [];
+        foreach (array_chunk($symbols, 100) as $batch) {
+            $data = $this->get('/v7/finance/quote', [
+                'symbols' => implode(',', $batch),
+                'fields'  => $fields,
+            ]);
+            $results = array_merge($results, $data['quoteResponse']['result'] ?? []);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Fetch live quotes for a single paginated page of TSX symbols.
+     */
+    public function getQuotesPage(int $page = 1, int $perPage = 50): array
+    {
+        $allSymbols = $this->getAllTsxSymbols();
+        $offset     = ($page - 1) * $perPage;
+        $pageSyms   = array_slice($allSymbols, $offset, $perPage);
+
+        if (empty($pageSyms)) {
+            return [];
+        }
+
+        $fields = implode(',', [
+            'shortName',
+            'symbol',
+            'regularMarketPrice',
+            'regularMarketChange',
+            'regularMarketChangePercent',
+            'regularMarketVolume',
+            'marketCap',
+            'regularMarketDayHigh',
+            'regularMarketDayLow',
+            'fiftyTwoWeekLow',
+            'fiftyTwoWeekHigh',
+            'currency',
+            'exchangeTimezoneName',
+            'marketState',
+        ]);
+
         $data = $this->get('/v7/finance/quote', [
-            'symbols' => implode(',', $symbols),
-            'fields'  => implode(',', [
-                'shortName',
-                'symbol',
-                'regularMarketPrice',
-                'regularMarketChange',
-                'regularMarketChangePercent',
-                'regularMarketVolume',
-                'marketCap',
-                'regularMarketDayHigh',
-                'regularMarketDayLow',
-                'fiftyTwoWeekLow',
-                'fiftyTwoWeekHigh',
-                'currency',
-                'exchangeTimezoneName',
-                'marketState',
-            ]),
+            'symbols' => implode(',', $pageSyms),
+            'fields'  => $fields,
         ]);
 
         return $data['quoteResponse']['result'] ?? [];
@@ -115,7 +213,7 @@ class YahooFinanceService
 
     public function getTopTsxStocks(int $limit = 10): array
     {
-        return array_slice($this->getQuotes(), 0, $limit);
+        return array_slice($this->getQuotesPage(1, $limit), 0, $limit);
     }
 
     /**
@@ -161,6 +259,6 @@ class YahooFinanceService
 
     public function getTsxSymbols(): array
     {
-        return self::TSX_SYMBOLS;
+        return $this->getAllTsxSymbols();
     }
 }
