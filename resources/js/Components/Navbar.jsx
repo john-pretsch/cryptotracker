@@ -76,6 +76,10 @@ export default function Navbar() {
                     <div className="hidden md:flex items-center gap-6">
                         <Link href="/" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Home</Link>
                         <Link href="/coins" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Cryptocurrencies</Link>
+                        <Link href="/commodities" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Commodities</Link>
+                        {user && (
+                            <Link href="/dashboard" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Dashboard</Link>
+                        )}
                         <div ref={stocksRef} className="relative">
                             <button
                                 type="button"
@@ -189,6 +193,10 @@ export default function Navbar() {
                     <div className="md:hidden pb-4 space-y-2">
                         <Link href="/" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Home</Link>
                         <Link href="/coins" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Cryptocurrencies</Link>
+                        <Link href="/commodities" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Commodities</Link>
+                        {user && (
+                            <Link href="/dashboard" className="block px-2 py-2 text-gray-300 hover:text-white" onClick={() => setMenuOpen(false)}>Dashboard</Link>
+                        )}
                         <div>
                             <button
                                 type="button"

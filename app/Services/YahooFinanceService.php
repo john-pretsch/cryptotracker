@@ -19,6 +19,42 @@ class YahooFinanceService
         'nasdaq' => ['short' => 'NASDAQ', 'full' => 'NASDAQ'],
     ];
 
+    /**
+     * CME futures organised by category.
+     * 'unit' is the human-readable price unit shown in the UI.
+     * Prices quoted in USX (US cents) are flagged so the UI can convert/annotate them.
+     */
+    private const COMMODITY_CATEGORIES = [
+        'Energy' => [
+            ['symbol' => 'CL=F',  'name' => 'Crude Oil (WTI)',     'unit' => 'USD/barrel'],
+            ['symbol' => 'BZ=F',  'name' => 'Crude Oil (Brent)',   'unit' => 'USD/barrel'],
+            ['symbol' => 'NG=F',  'name' => 'Natural Gas',         'unit' => 'USD/MMBtu'],
+            ['symbol' => 'RB=F',  'name' => 'RBOB Gasoline',       'unit' => 'USD/gallon'],
+            ['symbol' => 'HO=F',  'name' => 'Heating Oil',         'unit' => 'USD/gallon'],
+        ],
+        'Metals' => [
+            ['symbol' => 'GC=F',  'name' => 'Gold',                'unit' => 'USD/troy oz'],
+            ['symbol' => 'SI=F',  'name' => 'Silver',              'unit' => 'USD/troy oz'],
+            ['symbol' => 'HG=F',  'name' => 'Copper',              'unit' => 'USD/lb'],
+            ['symbol' => 'PL=F',  'name' => 'Platinum',            'unit' => 'USD/troy oz'],
+            ['symbol' => 'PA=F',  'name' => 'Palladium',           'unit' => 'USD/troy oz'],
+        ],
+        'Agriculture' => [
+            ['symbol' => 'ZC=F',  'name' => 'Corn',                'unit' => '¢/bushel'],
+            ['symbol' => 'ZW=F',  'name' => 'Wheat (SRW)',         'unit' => '¢/bushel'],
+            ['symbol' => 'ZS=F',  'name' => 'Soybeans',            'unit' => '¢/bushel'],
+            ['symbol' => 'ZL=F',  'name' => 'Soybean Oil',         'unit' => '¢/lb'],
+            ['symbol' => 'ZM=F',  'name' => 'Soybean Meal',        'unit' => 'USD/short ton'],
+            ['symbol' => 'ZO=F',  'name' => 'Oats',                'unit' => '¢/bushel'],
+            ['symbol' => 'ZR=F',  'name' => 'Rough Rice',          'unit' => 'USD/cwt'],
+        ],
+        'Livestock' => [
+            ['symbol' => 'LE=F',  'name' => 'Live Cattle',         'unit' => '¢/lb'],
+            ['symbol' => 'GF=F',  'name' => 'Feeder Cattle',       'unit' => '¢/lb'],
+            ['symbol' => 'HE=F',  'name' => 'Lean Hogs',           'unit' => '¢/lb'],
+        ],
+    ];
+
     /** Fallback symbols used when the TMX directory is unreachable. */
     private const FALLBACK_SYMBOLS = [
         'tsx'    => ['RY.TO', 'TD.TO', 'BNS.TO', 'BMO.TO', 'CNR.TO', 'ENB.TO', 'SU.TO', 'CP.TO', 'BCE.TO', 'TRP.TO'],
@@ -280,6 +316,49 @@ class YahooFinanceService
         };
 
         return empty($filtered) ? [] : $this->getQuotes($filtered);
+    }
+
+    /**
+     * Fetch live quotes for all CME commodity futures, grouped by category.
+     * Each item includes the static metadata (name, unit) merged with live quote data.
+     *
+     * @return array<string, list<array>>  Keys are category names.
+     */
+    public function getCommodities(): array
+    {
+        // Collect all symbols in one request
+        $allSymbols = [];
+        foreach (self::COMMODITY_CATEGORIES as $items) {
+            foreach ($items as $item) {
+                $allSymbols[] = $item['symbol'];
+            }
+        }
+
+        $quotes = $this->getQuotes($allSymbols);
+        $quoteMap = array_column($quotes, null, 'symbol');
+
+        $grouped = [];
+        foreach (self::COMMODITY_CATEGORIES as $category => $items) {
+            $grouped[$category] = array_map(function (array $item) use ($quoteMap): array {
+                $quote = $quoteMap[$item['symbol']] ?? [];
+
+                return array_merge($item, [
+                    'shortName'                    => $quote['shortName'] ?? $item['name'],
+                    'regularMarketPrice'           => $quote['regularMarketPrice'] ?? null,
+                    'regularMarketChange'          => $quote['regularMarketChange'] ?? null,
+                    'regularMarketChangePercent'   => $quote['regularMarketChangePercent'] ?? null,
+                    'regularMarketDayHigh'         => $quote['regularMarketDayHigh'] ?? null,
+                    'regularMarketDayLow'          => $quote['regularMarketDayLow'] ?? null,
+                    'fiftyTwoWeekHigh'             => $quote['fiftyTwoWeekHigh'] ?? null,
+                    'fiftyTwoWeekLow'              => $quote['fiftyTwoWeekLow'] ?? null,
+                    'regularMarketVolume'          => $quote['regularMarketVolume'] ?? null,
+                    'currency'                     => $quote['currency'] ?? 'USD',
+                    'marketState'                  => $quote['marketState'] ?? null,
+                ]);
+            }, $items);
+        }
+
+        return $grouped;
     }
 
     /** @deprecated Use searchExchange() */
