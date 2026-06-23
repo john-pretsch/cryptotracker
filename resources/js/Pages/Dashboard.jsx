@@ -2,8 +2,9 @@ import IndicatorCard from '@/Components/IndicatorCard';
 import Layout from '@/Components/Layout';
 import { Head, Link } from '@inertiajs/react';
 
-export default function Dashboard({ indicators = {} }) {
+export default function Dashboard({ indicators = {}, indices = {} }) {
     const indicatorList = Object.entries(indicators);
+    const indicesList   = Object.entries(indices);
 
     return (
         <Layout>
@@ -21,6 +22,19 @@ export default function Dashboard({ indicators = {} }) {
                         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             {indicatorList.map(([id, indicator]) => (
                                 <IndicatorCard key={id} id={id} {...indicator} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {indicesList.length > 0 && (
+                    <div className="mb-10">
+                        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">
+                            Major Indices
+                        </h2>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                            {indicesList.map(([id, index]) => (
+                                <IndicatorCard key={id} id={id} {...index} />
                             ))}
                         </div>
                     </div>

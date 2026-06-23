@@ -19,6 +19,9 @@ class DashboardController extends Controller
         // Yahoo Finance indicators (crude oil, gold, forex)
         $yahooIndicators = $this->yahoo->getDashboardIndicators();
 
+        // Major equity indices
+        $indices = $this->yahoo->getDashboardIndices();
+
         // Bitcoin via CoinGecko (includes 7-day sparkline)
         $btcCoins = $this->coingecko->getCoins(1, 'usd', 1);
         $btc = $btcCoins[0] ?? null;
@@ -46,6 +49,9 @@ class DashboardController extends Controller
 
         $indicators = array_merge(['bitcoin' => $bitcoin], $yahooIndicators);
 
-        return Inertia::render('Dashboard', ['indicators' => $indicators]);
+        return Inertia::render('Dashboard', [
+            'indicators' => $indicators,
+            'indices'    => $indices,
+        ]);
     }
 }

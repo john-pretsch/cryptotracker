@@ -424,6 +424,40 @@ class YahooFinanceService
         return $result;
     }
 
+    /**
+     * Fetch quote + sparkline data for major equity indices:
+     * S&P 500, DJIA, NASDAQ Composite, Russell 2000, S&P/TSX Composite.
+     *
+     * @return array<string, array>  Keyed by index id.
+     */
+    public function getDashboardIndices(): array
+    {
+        $definitions = [
+            'sp500'   => ['symbol' => '^GSPC',  'name' => 'S&P 500',           'unit' => 'USD',  'color' => 'blue'],
+            'djia'    => ['symbol' => '^DJI',   'name' => 'DJIA',              'unit' => 'USD',  'color' => 'indigo'],
+            'nasdaq'  => ['symbol' => '^IXIC',  'name' => 'NASDAQ Composite',  'unit' => 'USD',  'color' => 'purple'],
+            'russell' => ['symbol' => '^RUT',   'name' => 'Russell 2000',      'unit' => 'USD',  'color' => 'cyan'],
+            'tsx'     => ['symbol' => '^GSPTSE','name' => 'S&P/TSX Composite', 'unit' => 'CAD',  'color' => 'rose'],
+        ];
+
+        $symbols  = array_column($definitions, 'symbol');
+        $quotes   = $this->getQuotes($symbols);
+        $quoteMap = array_column($quotes, null, 'symbol');
+
+        $result = [];
+        foreach ($definitions as $id => $def) {
+            $q = $quoteMap[$def['symbol']] ?? [];
+            $result[$id] = array_merge($def, [
+                'price'         => $q['regularMarketPrice'] ?? null,
+                'change'        => $q['regularMarketChange'] ?? null,
+                'changePercent' => $q['regularMarketChangePercent'] ?? null,
+                'sparkline'     => $this->getSparkline($def['symbol']),
+            ]);
+        }
+
+        return $result;
+    }
+
     /** @deprecated Use searchExchange() */
     public function searchTsx(string $query): array
     {

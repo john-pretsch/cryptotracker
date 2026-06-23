@@ -4,6 +4,10 @@ const COLOR_STYLES = {
     blue:   { border: 'border-blue-500/30',   text: 'text-blue-400',   bg: 'bg-blue-500/10'   },
     green:  { border: 'border-green-500/30',  text: 'text-green-400',  bg: 'bg-green-500/10'  },
     amber:  { border: 'border-amber-500/30',  text: 'text-amber-400',  bg: 'bg-amber-500/10'  },
+    indigo: { border: 'border-indigo-500/30', text: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+    purple: { border: 'border-purple-500/30', text: 'text-purple-400', bg: 'bg-purple-500/10' },
+    cyan:   { border: 'border-cyan-500/30',   text: 'text-cyan-400',   bg: 'bg-cyan-500/10'   },
+    rose:   { border: 'border-rose-500/30',   text: 'text-rose-400',   bg: 'bg-rose-500/10'   },
 };
 
 function MiniSparkline({ data, positive }) {
@@ -58,9 +62,11 @@ function formatPrice(price, id) {
         return price.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
     }
 
+    // Indices and large values — no currency symbol for CAD-denominated (tsx)
+    const currency = id === 'tsx' ? 'CAD' : 'USD';
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD',
+        currency,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     }).format(price);
