@@ -361,6 +361,69 @@ class YahooFinanceService
         return $grouped;
     }
 
+    /**
+     * Fetch the last N daily closing prices for a symbol (for sparklines).
+     *
+     * @return float[]  Array of closing prices, oldest first.
+     */
+    public function getSparkline(string $symbol, int $days = 14): array
+    {
+        $cacheKey = 'yahoo_sparkline_'.md5($symbol.$days);
+
+        return Cache::remember($cacheKey, 300, function () use ($symbol, $days) {
+            $creds    = $this->getCredentials();
+            $response = $this->request(
+                "/v8/finance/chart/{$symbol}",
+                ['interval' => '1d', 'range' => "{$days}d"],
+                $creds
+            );
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $closes = $response->json()['chart']['result'][0]['indicators']['quote'][0]['close'] ?? [];
+
+            return array_values(array_filter(array_map(
+                fn ($v) => $v !== null ? (float) $v : null,
+                $closes
+            ), fn ($v) => $v !== null));
+        });
+    }
+
+    /**
+     * Fetch quote + sparkline data for the dashboard financial indicators:
+     * Crude Oil (WTI), Gold, EUR/USD, USD/CAD.
+     *
+     * @return array<string, array>  Keyed by indicator id.
+     */
+    public function getDashboardIndicators(): array
+    {
+        $symbols = ['CL=F', 'GC=F', 'EURUSD=X', 'USDCAD=X'];
+        $quotes  = $this->getQuotes($symbols);
+        $quoteMap = array_column($quotes, null, 'symbol');
+
+        $definitions = [
+            'crude_oil' => ['symbol' => 'CL=F',     'name' => 'Crude Oil (WTI)', 'unit' => 'USD/bbl',  'color' => 'orange'],
+            'gold'      => ['symbol' => 'GC=F',     'name' => 'Gold',            'unit' => 'USD/oz',   'color' => 'yellow'],
+            'eur_usd'   => ['symbol' => 'EURUSD=X', 'name' => 'EUR / USD',       'unit' => 'FX rate',  'color' => 'blue'],
+            'usd_cad'   => ['symbol' => 'USDCAD=X', 'name' => 'USD / CAD',       'unit' => 'FX rate',  'color' => 'green'],
+        ];
+
+        $result = [];
+        foreach ($definitions as $id => $def) {
+            $q = $quoteMap[$def['symbol']] ?? [];
+            $result[$id] = array_merge($def, [
+                'price'         => $q['regularMarketPrice'] ?? null,
+                'change'        => $q['regularMarketChange'] ?? null,
+                'changePercent' => $q['regularMarketChangePercent'] ?? null,
+                'sparkline'     => $this->getSparkline($def['symbol']),
+            ]);
+        }
+
+        return $result;
+    }
+
     /** @deprecated Use searchExchange() */
     public function searchTsx(string $query): array
     {
